@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
     from pymatgen.analysis.graphs import MoleculeGraph
     from pymatgen.core.composition import SpeciesLike
+    from pymatgen.util.typing import PathLike
 
 
 __author__ = "Shyue Ping Ong, Geoffroy Hautier, Sai Jayaraman, "
@@ -4538,3 +4539,108 @@ def metal_edge_extender(
                         indices.append(ii)
 
     return mol_graph
+
+
+class NearNeighborsVisualizer:
+    """
+    Class to create VESTA files with bonds defined by a NearNeighbors algorithm.
+    """
+
+    def __init__(
+        self,
+        near_neighbors: NearNeighbors,
+        structure: Structure,
+        bond_tol: float = 0.1,
+        # TODO implement min_weight threshold for including bond(?)
+    ) -> None:
+        """
+        Args:
+            near_neighbors : pymatgen.analysis.localenv.NearNeighbors
+                NearNeighbors object used to determine bonding.
+            bond_tol : float
+                Tolerance added/subtracted from actual bond lengths for VESTA SBOND entries.
+        """
+        self.bond_tol = bond_tol
+        self.near_neighbors = near_neighbors
+        self.structure = structure
+        self._bonds = self._get_relevant_bonds()
+
+    def _get_relevant_bonds(self) -> list:
+        bonds = []
+        for site_id, site in enumerate(self.structure.sites):
+            nbs = self.near_neighbors.get_nn_info(structure=self.structure, n=site_id)
+            for nb in nbs:
+                site_str = f"{site.species_string}{site_id + 1}"
+                site_to_str = f"{nb['site'].species_string}{nb['site_index'] + 1}"
+                length = round(nb["site"].nn_distance, 5)
+                # TODO double check working with below
+                # length = self.structure.get_distance(i=site, j=nb["site"], jimage=nb["image"])
+                if [site_to_str, site_str, length] not in bonds:
+                    bonds.append([site_str, site_to_str, length])
+        return bonds
+
+    def write_vesta(self, file_name: PathLike = "output.vesta") -> None:
+        """
+        Write a VESTA file with bonds defined by NearNeighbors.
+
+        Args:
+            file_name : str
+                Output VESTA file name.
+        """
+        # partly adapted fr. Janine George:
+        # https://github.com/materialsproject/pymatgen/blob/682bfd855dd89264b0ff8d6bee4815f8834cc5ac/src/pymatgen/phonon/thermal_displacements.py#L310
+        with open(file_name, mode="w", encoding="utf-8") as file:
+            file.write("#VESTA_FORMAT_VERSION 3.5.4\n \n \n")
+            file.write("CRYSTAL\n\n")
+            file.write("TITLE\n")
+            file.write("Custom bonds\n\n")
+            file.write("GROUP\n")
+            file.write("1 1 P 1\n\n")
+            file.write("CELLP\n")
+            file.write(
+                f"{self.structure.lattice.a} "
+                f"{self.structure.lattice.b} "
+                f"{self.structure.lattice.c} "
+                f"{self.structure.lattice.alpha} "
+                f"{self.structure.lattice.beta} "
+                f"{self.structure.lattice.gamma}\n"
+            )
+            file.write("  0.000000   0.000000   0.000000   0.000000   0.000000   0.000000\n")  # error on parameters
+            file.write("STRUC\n")  # codespell:ignore struc
+
+            for site_idx, site in enumerate(self.structure, start=1):
+                file.write(
+                    f"{site_idx} {site.species_string} {site.species_string}{site_idx} 1.0000 {site.frac_coords[0]} "
+                    f"{site.frac_coords[1]} {site.frac_coords[2]} 1a 1\n"
+                )
+                file.write(" 0.000000 0.000000 0.000000 0.00\n")
+
+            file.write("  0 0 0 0 0 0 0\n")
+
+            # Assumption: no thermal displacement info available
+            for site_idx, site in enumerate(self.structure, start=1):
+                file.write(f"{site_idx}  {site.species_string}{site_idx} 0.00000 \n")
+                file.write(" 0.000000 0.000000 0.000000 \n")
+
+            # Define bonds
+            file.write("SBOND\n")
+            file.writelines(
+                f"{bond_id}  {bond[0]}  {bond[1]}  {bond[2] - self.bond_tol}  {bond[2] + self.bond_tol} "
+                f" 0  1  1  1  1  0.250  2.000 127 127 127\n"
+                for bond_id, bond in enumerate(self._bonds, start=1)
+            )
+            file.write("0 0 0 0\n")
+
+            # Minimal styling
+            # TODO solve polyhedra issue
+            file.write(
+                "STYLE\n"
+                "MODEL   2  1  0\n"
+                "SURFS   0  1  1\n"
+                "FORMS   0  1\n"
+                "ATOMS   0  0  1\n"
+                "BONDS   1\n"
+                "POLYS   1\n"
+                "POLYP\n"
+                " 204 1  1.000 180 180 180\n"
+            )
