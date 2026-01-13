@@ -21,7 +21,12 @@ class LobsterNeighborsVisualizer(NearNeighborsVisualizer):
             bond_tol : float
                 Tolerance added/subtracted from actual bond lengths for VESTA SBOND entries.
         """
-        super().__init__(near_neighbors=near_neighbors, structure=near_neighbors.structure, bond_tol=bond_tol)
+        super().__init__(
+            near_neighbors=near_neighbors,
+            structure=near_neighbors.structure,
+            bond_tol=bond_tol,
+            min_neighbor_weight=1.0,
+        )
 
     @classmethod
     def from_lobster_calc(

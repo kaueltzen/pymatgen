@@ -4544,6 +4544,11 @@ def metal_edge_extender(
 class NearNeighborsVisualizer:
     """
     Class to create VESTA files with bonds defined by a NearNeighbors algorithm.
+
+    Notes regarding NearNeighbors algorithms that do not necessarily result
+    in reciprocal bonding (e.g., CrystalNN):
+        With the current implementation, the bond A-B is written to the vesta file if
+        at least A is bonded to B or B is bonded to A.
     """
 
     def __init__(
@@ -4551,18 +4556,23 @@ class NearNeighborsVisualizer:
         near_neighbors: NearNeighbors,
         structure: Structure,
         bond_tol: float = 0.1,
-        # TODO implement min_weight threshold for including bond(?)
+        min_neighbor_weight: float = 1.0,
     ) -> None:
         """
         Args:
             near_neighbors : pymatgen.analysis.localenv.NearNeighbors
                 NearNeighbors object used to determine bonding.
+            structure : pymatgen.core.Structure
             bond_tol : float
                 Tolerance added/subtracted from actual bond lengths for VESTA SBOND entries.
+            min_neighbor_weight : float
+                Minimum weight of a neighbor to be counted as bonding and written to VESTA file.
+                Allows flexible bond definition, defaults to 1.0.
         """
-        self.bond_tol = bond_tol
         self.near_neighbors = near_neighbors
         self.structure = structure
+        self.bond_tol = bond_tol
+        self.min_neighbor_weight = min_neighbor_weight
         self._bonds = self._get_relevant_bonds()
 
     def _get_relevant_bonds(self) -> list:
@@ -4570,13 +4580,15 @@ class NearNeighborsVisualizer:
         for site_id, site in enumerate(self.structure.sites):
             nbs = self.near_neighbors.get_nn_info(structure=self.structure, n=site_id)
             for nb in nbs:
-                site_str = f"{site.species_string}{site_id + 1}"
-                site_to_str = f"{nb['site'].species_string}{nb['site_index'] + 1}"
-                length = round(nb["site"].nn_distance, 5)
-                # TODO double check working with below
-                # length = self.structure.get_distance(i=site, j=nb["site"], jimage=nb["image"])
-                if [site_to_str, site_str, length] not in bonds:
-                    bonds.append([site_str, site_to_str, length])
+                if round(nb["weight"], 6) >= self.min_neighbor_weight:  # TODO
+                    site_str = f"{site.species_string}{site_id + 1}"
+                    site_to_str = f"{nb['site'].species_string}{nb['site_index'] + 1}"
+                    length = round(nb["site"].nn_distance, 5)
+                    # TODO construct test fr. below
+                    # assert length
+                    # == round(self.structure.get_distance(i=site_id, j=nb["site_index"], jimage=nb["image"]), 5)
+                    if [site_to_str, site_str, length] not in bonds:
+                        bonds.append([site_str, site_to_str, length])
         return bonds
 
     def write_vesta(self, file_name: PathLike = "output.vesta") -> None:
