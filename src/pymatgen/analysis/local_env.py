@@ -4573,9 +4573,9 @@ class NearNeighborsVisualizer:
         self.structure = structure
         self.bond_tol = bond_tol
         self.min_neighbor_weight = min_neighbor_weight
-        self._bonds = self._get_relevant_bonds()
+        self._bonds = self.get_relevant_bonds()
 
-    def _get_relevant_bonds(self) -> list:
+    def get_relevant_bonds(self) -> list:
         bonds = []
         for site_id, site in enumerate(self.structure.sites):
             nbs = self.near_neighbors.get_nn_info(structure=self.structure, n=site_id)
@@ -4635,6 +4635,7 @@ class NearNeighborsVisualizer:
                 file.write(" 0.000000 0.000000 0.000000 \n")
 
             # Define bonds
+            # TODO allow customization of which bonds would be part of coordination polyhedron if enabled in VESTA (?)
             file.write("SBOND\n")
             file.writelines(
                 f"{bond_id}  {bond[0]}  {bond[1]}  {bond[2] - self.bond_tol}  {bond[2] + self.bond_tol} "
@@ -4644,15 +4645,4 @@ class NearNeighborsVisualizer:
             file.write("0 0 0 0\n")
 
             # Minimal styling
-            # TODO solve polyhedra issue
-            file.write(
-                "STYLE\n"
-                "MODEL   2  1  0\n"
-                "SURFS   0  1  1\n"
-                "FORMS   0  1\n"
-                "ATOMS   0  0  1\n"
-                "BONDS   1\n"
-                "POLYS   1\n"
-                "POLYP\n"
-                " 204 1  1.000 180 180 180\n"
-            )
+            file.write("STYLE\nMODEL   2  1  0\nSURFS   0  1  1\nFORMS   0  1\nATOMS   0  0  1\nBONDS   1\nPOLYS   0\n")
